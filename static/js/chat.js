@@ -10,6 +10,8 @@ const chatHistoryList = document.getElementById('chat-history-list');
 let currentConversation = [];
 let isGenerating = false;
 let conversationHistory = [];
+let userTyping = false;
+let inputBuffer = '';
 
 // Fetch the conversation data from the server when the page loads
 document.addEventListener('DOMContentLoaded', () => {
@@ -195,43 +197,92 @@ function addSystemMessage(message, categories = [], animate = true) {
     });
 }
 
-// Simulate typing and gradually reveal the message
+// Simulate typing and gradually reveal the message with realistic timing
 function simulateTyping(message, messageContent, typingIndicator, categories) {
     isGenerating = true;
     
-    // Calculate typing time based on message length (between 1-5 seconds)
-    const typingTime = Math.min(Math.max(message.length * 20, 1000), 5000);
+    // Calculate the "thinking" time based on message complexity and length
+    // Longer messages need more thinking time to simulate real AI processing
+    const thinkingTime = Math.min(Math.max(message.length * 5, 1500), 4000);
     
-    // Remove typing indicator and add the message after the typing time
+    // Display the thinking animation (typing dots) for the calculated time
     setTimeout(() => {
         messageContent.removeChild(typingIndicator);
         
-        // Create a paragraph for the message
+        // Create a paragraph for the message with cursor effect
         const messageParagraph = document.createElement('p');
-        messageParagraph.className = 'mb-0';
+        messageParagraph.className = 'mb-0 message-paragraph-typing';
         messageContent.appendChild(messageParagraph);
         
-        // Gradually reveal the message character by character
+        // Configure realistic typing
+        const avgHumanTypingSpeed = 200; // milliseconds per character (5 chars per second)
+        const variability = 100; // Add some randomness to typing speed
+        
+        // Gradually reveal the message character by character with variable speed
         let charIndex = 0;
+        let currentDelay = 0;
+        
+        // Split into "chunks" to simulate how humans read and type
+        // Typically humans would type a few chars, then pause slightly at punctuation or between thoughts
+        const chunks = message.split(/([,.?!:;])/);
+        let currentChunkIndex = 0;
+        let currentChunkChar = 0;
+        let currentChunk = chunks[0] || '';
+        
         const typingInterval = setInterval(() => {
-            messageParagraph.textContent = message.substring(0, charIndex + 1);
-            charIndex++;
-            scrollToBottom();
-            
-            if (charIndex >= message.length) {
-                clearInterval(typingInterval);
-                
-                // Add categories if provided
-                if (categories && categories.length > 0) {
-                    const categoryContainer = createCategoryContainer(categories);
-                    messageContent.appendChild(categoryContainer);
+            // Check if we've reached the end of the current chunk
+            if (currentChunkChar >= currentChunk.length) {
+                // Move to the next chunk
+                currentChunkIndex++;
+                if (currentChunkIndex >= chunks.length) {
+                    // We've finished all chunks
+                    clearInterval(typingInterval);
+                    
+                    // Add categories after a slight delay
+                    setTimeout(() => {
+                        // Remove typing cursor once the message is fully generated
+                        messageParagraph.classList.remove('message-paragraph-typing');
+                        
+                        if (categories && categories.length > 0) {
+                            const categoryContainer = createCategoryContainer(categories);
+                            messageContent.appendChild(categoryContainer);
+                        }
+                        
+                        isGenerating = false;
+                        scrollToBottom();
+                    }, 300);
+                    return;
                 }
                 
-                isGenerating = false;
-                scrollToBottom();
+                // Get the next chunk and reset character index
+                currentChunk = chunks[currentChunkIndex];
+                currentChunkChar = 0;
+                
+                // Add a pause if this is punctuation
+                if (/^[,.?!:;]$/.test(currentChunk)) {
+                    // Longer pause for end of sentence punctuation
+                    const pauseTime = /[.?!]/.test(currentChunk) ? 700 : 300;
+                    setTimeout(() => {
+                        // Add the punctuation immediately
+                        messageParagraph.textContent += currentChunk;
+                        currentChunkChar = currentChunk.length;
+                        scrollToBottom();
+                    }, pauseTime);
+                    return;
+                }
             }
-        }, typingTime / message.length);
-    }, 1500);
+            
+            // Add the next character of the current chunk
+            messageParagraph.textContent = message.substring(0, ++charIndex);
+            currentChunkChar++;
+            scrollToBottom();
+            
+            // Randomize typing speed slightly to look more human
+            currentDelay = avgHumanTypingSpeed + (Math.random() * variability - variability/2);
+            
+        }, avgHumanTypingSpeed);
+        
+    }, thinkingTime);
 }
 
 // Create category tags container
@@ -259,6 +310,25 @@ function scrollToBottom() {
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
+// Set up "real typing" effect for the user input field
+userInput.addEventListener('keydown', function(e) {
+    // Skip for special keys like arrows, shift, etc.
+    if (e.ctrlKey || e.altKey || e.metaKey || 
+        e.key === 'Shift' || e.key === 'Control' || 
+        e.key === 'Alt' || e.key === 'Meta' ||
+        e.key === 'ArrowUp' || e.key === 'ArrowDown' || 
+        e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        return;
+    }
+    
+    // Handle actual typing
+    if (e.key === 'Backspace') {
+        inputBuffer = inputBuffer.slice(0, -1);
+    } else if (e.key.length === 1) {
+        inputBuffer += e.key;
+    }
+});
+
 // Handle form submission
 chatForm.addEventListener('submit', function(e) {
     e.preventDefault();
@@ -266,18 +336,76 @@ chatForm.addEventListener('submit', function(e) {
     // Get the user input
     const message = userInput.value.trim();
     
-    // Clear and reset the textarea
+    // Clear and reset the textarea and buffer
     userInput.value = '';
     userInput.style.height = 'auto';
+    inputBuffer = '';
     
     // If the message is empty or the AI is still generating, do nothing
     if (message === '' || isGenerating) return;
     
-    // Add the user message to the chat
-    addUserMessage(message);
+    // First add a visible typing indicator for the user message
+    const userMessageContainer = document.createElement('div');
+    userMessageContainer.className = 'message-container user-message';
     
-    // Simulate AI response
-    generateResponse(message);
+    const userMessageContent = document.createElement('div');
+    userMessageContent.className = 'message-content';
+    
+    const userTypingIndicator = document.createElement('div');
+    userTypingIndicator.className = 'typing-indicator';
+    
+    for (let i = 0; i < 3; i++) {
+        const dot = document.createElement('span');
+        dot.className = 'typing-dot';
+        userTypingIndicator.appendChild(dot);
+    }
+    
+    userMessageContent.appendChild(userTypingIndicator);
+    userMessageContainer.appendChild(userMessageContent);
+    chatMessages.appendChild(userMessageContainer);
+    
+    // Make the container visible
+    setTimeout(() => {
+        userMessageContainer.classList.add('visible');
+        scrollToBottom();
+    }, 10);
+    
+    // Simulate user typing
+    setTimeout(() => {
+        userMessageContent.removeChild(userTypingIndicator);
+        
+        const messageParagraph = document.createElement('p');
+        messageParagraph.className = 'mb-0 message-paragraph-typing';
+        
+        // Gradually reveal the message character by character
+        let charIndex = 0;
+        const typingSpeed = Math.min(Math.max(message.length * 8, 500), 1500); // Between 0.5 and 1.5 seconds
+        const typingInterval = setInterval(() => {
+            messageParagraph.textContent = message.substring(0, charIndex + 1);
+            charIndex++;
+            scrollToBottom();
+            
+            if (charIndex >= message.length) {
+                clearInterval(typingInterval);
+                
+                // Remove the typing cursor class once typing is complete
+                messageParagraph.classList.remove('message-paragraph-typing');
+                
+                // Add to current conversation once typing is complete
+                currentConversation.push({
+                    role: 'user',
+                    content: message
+                });
+                
+                // Generate AI response after user typing is complete
+                setTimeout(() => {
+                    generateResponse(message);
+                }, 500);
+            }
+        }, typingSpeed / message.length);
+        
+        userMessageContent.appendChild(messageParagraph);
+    }, 800);
 });
 
 // Generate a mock AI response
