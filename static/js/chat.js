@@ -173,7 +173,7 @@ function addSystemMessage(message, categories = [], animate = true) {
     } else {
         // Add the message immediately without animation
         const messageParagraph = document.createElement('p');
-        messageParagraph.className = 'mb-0';
+        messageParagraph.className = 'mb-0 message-paragraph-typing';
         messageParagraph.textContent = message;
         
         messageContent.appendChild(messageParagraph);
@@ -187,6 +187,11 @@ function addSystemMessage(message, categories = [], animate = true) {
         messageContainer.appendChild(messageContent);
         chatMessages.appendChild(messageContainer);
         messageContainer.classList.add('visible');
+        
+        // Remove typing cursor after a brief delay to show it
+        setTimeout(() => {
+            messageParagraph.classList.remove('message-paragraph-typing');
+        }, 1000);
     }
     
     // Add to current conversation
